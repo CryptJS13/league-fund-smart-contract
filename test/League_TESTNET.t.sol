@@ -28,8 +28,8 @@ contract League_TESTNET_Test is Test {
 
     // We’ll define addresses for testing
     address internal commissioner; // will deploy & have the COMMISSIONER_ROLE
-    address internal user1;        // a random user who will join the league
-    address internal user2;        // another user or treasurer
+    address internal user1; // a random user who will join the league
+    address internal user2; // another user or treasurer
 
     /**
      * @dev Runs before each test. Sets up fresh state:
@@ -43,13 +43,7 @@ contract League_TESTNET_Test is Test {
         user2 = makeAddr("User2");
 
         // Deploy the league contract
-        league = new League_TESTNET(
-            LEAGUE_NAME,
-            commissioner,
-            INITIAL_SEASON_NAME,
-            INITIAL_DUES,
-            INITIAL_TEAM_NAME
-        );
+        league = new League_TESTNET(LEAGUE_NAME, commissioner, INITIAL_SEASON_NAME, INITIAL_DUES, INITIAL_TEAM_NAME);
 
         // 1. Impersonate some known USDC whale or faucet address on Base Sepolia
         // 2. Transfer USDC to user1, user2, etc.
@@ -59,7 +53,7 @@ contract League_TESTNET_Test is Test {
         IERC20(USDC_ADDRESS).transfer(user1, 1000e6); // user1 gets 1000 USDC
         IERC20(USDC_ADDRESS).transfer(user2, 1000e6);
         vm.stopPrank();
-        
+
         // Also ensure they have enough native ETH for gas if needed:
         vm.deal(commissioner, 1 ether);
         vm.deal(user1, 1 ether);

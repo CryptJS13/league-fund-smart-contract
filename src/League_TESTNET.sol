@@ -59,7 +59,7 @@ contract League_TESTNET is AccessControl {
     function activeTeams() public view returns (TeamData[] memory) {
         address[] memory teams = currentSeason().teams;
         TeamData[] memory _activeTeams = new TeamData[](teams.length);
-        for (uint i = 0; i < teams.length; i++) {
+        for (uint256 i = 0; i < teams.length; i++) {
             address team = teams[i];
             _activeTeams[i] = TeamData({name: teamName[team], wallet: team});
         }

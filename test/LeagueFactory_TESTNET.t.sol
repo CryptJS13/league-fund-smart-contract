@@ -40,16 +40,11 @@ contract LeagueFactory_TESTNET_Test is Test {
     function testCreateLeague() public {
         vm.startPrank(TEST_ACCOUNT);
         // Call createLeague
-        address leagueAddress = factory.createLeague(
-            leagueName,
-            seasonName,
-            dues,
-            teamName
-        );
+        address leagueAddress = factory.createLeague(leagueName, seasonName, dues, teamName);
 
         // Basic checks
         assertTrue(leagueAddress != address(0), "League address should not be zero");
-        
+
         // Check the stored mapping
         address storedAddress = factory.getLeague(leagueName);
         assertEq(storedAddress, leagueAddress, "Stored league address mismatch");
