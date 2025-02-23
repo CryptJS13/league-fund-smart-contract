@@ -49,7 +49,9 @@ contract League_TESTNET is AccessControl {
         seasonExists[_seasonName] = true;
         seasons.push(SeasonData({name: _seasonName, dues: _dues, teams: new address[](0)}));
         teamExists[_teamName] = true;
+        teamName[_commissioner] = _teamName;
         seasons[0].teams.push(_commissioner);
+        allTeams.push(TeamData({name: _teamName, wallet: _commissioner}));
     }
 
     function currentSeason() public view returns (SeasonData memory) {
