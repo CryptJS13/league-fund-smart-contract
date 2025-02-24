@@ -1,0 +1,20 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.28"
+# via_ir = true
+
+[fmt]
+line_length=130
+tab_width=4
+
+[rpc_endpoints]
+mainnet = "https://base-mainnet.g.alchemy.com/v2/${ALCHEMEY_KEY}"
+sepolia = "https://base-sepolia.g.alchemy.com/v2/${ALCHEMEY_KEY}"
+
+[etherscan]
+mainnet = { key = "${BASESCAN_KEY}", url = "https://api.basescan.org/api" }
+sepolia = { key = "${BASESCAN_KEY}", url = "https://api-sepolia.basescan.org/api" }
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
