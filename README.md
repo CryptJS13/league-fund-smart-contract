@@ -1,66 +1,70 @@
-## Foundry
+# League Fund Smart Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This repository contains the smart contracts for the League Fund project, developed using [Foundry](https://book.getfoundry.sh/), a fast and portable toolkit for Ethereum application development.
 
-Foundry consists of:
+## Project Structure
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- **`src/`**: Main smart contract source code.
+- **`lib/`**: External library dependencies.
+- **`script/`**: Deployment and utility scripts.
+- **`test/`**: Test files for the smart contracts.
 
-## Documentation
+## Getting Started
 
-https://book.getfoundry.sh/
+### Prerequisites
+
+- Ensure you have [Foundry installed](https://book.getfoundry.sh/getting-started/installation.html).
+
+### Installation
+
+1. **Clone the Repository**:
+   ```sh
+   git clone https://github.com/leaguefund/league-fund-smart-contract.git
+   cd league-fund-smart-contract
+   ```
+
+
+2. **Install Dependencies**:
+   ```sh
+   forge install
+   ```
+
+
+3. **Set Up Environment Variables**:
+   - Duplicate `.env.example` and rename it to `.env`.
+   - Fill in the necessary environment variables in the `.env` file.
 
 ## Usage
 
-### Build
+### Building Contracts
 
-```shell
-$ forge build
+Compile the smart contracts:
+
+
+```sh
+forge build
 ```
 
-### Test
 
-```shell
-$ forge test
+### Running Tests
+
+Execute the test suite:
+
+
+```sh
+forge test --fork-url sepolia
 ```
 
-### Format
 
-```shell
-$ forge fmt
+### Deployment
+
+To deploy contracts, use the provided scripts in the `script/` directory. For example:
+
+
+```sh
+forge script script/DeployContract.s.sol --rpc-url sepolia --broadcast
 ```
 
-### Gas Snapshots
+## Resources
 
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- [Foundry Documentation](https://book.getfoundry.sh/)
