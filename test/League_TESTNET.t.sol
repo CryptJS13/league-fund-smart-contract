@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import "forge-std/Test.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../src/League_TESTNET.sol";
+import "../src/LeagueFactory_TESTNET.sol";
 import "../src/interfaces/ILeagueFactory.sol";
 
 /**
@@ -31,7 +32,7 @@ contract League_TESTNET_Test is Test {
     address internal commissioner; // Deploy & has COMMISSIONER_ROLE
     address internal user1; // A random user who will join the league
     address internal user2; // Another user or treasurer
-    address internal factory; // We'll set this as a mock or use a real one if desired
+    LeagueFactory_TESTNET internal factory; // We'll set this as a mock or use a real one if desired
 
     /**
      * @dev Runs before each test. Sets up fresh state:
@@ -45,13 +46,9 @@ contract League_TESTNET_Test is Test {
         user2 = makeAddr("User2");
 
         // 2. Pretend the league was deployed by some factory address (or real one).
-        factory = makeAddr("MockFactory");
+        factory = new LeagueFactory_TESTNET();
 
-        // 3. Deploy the league contract
-        vm.prank(factory); // The next creation is "from" the factory
-        league = new League_TESTNET(LEAGUE_NAME, INITIAL_DUES, INITIAL_TEAM_NAME, commissioner);
-
-        // 4. Give commissioner, user1, user2 some USDC & ETH on a fork
+        // 3. Give commissioner, user1, user2 some USDC & ETH on a fork
         //    (Here we mock a "usdcHolder" who has enough USDC.)
         //    Adjust these addresses to real whales if needed on a real fork.
         address usdcHolder = address(0xE262C1e7c5177E28E51A5cf1C6944470697B2c9F);
@@ -65,6 +62,13 @@ contract League_TESTNET_Test is Test {
         vm.deal(commissioner, 1 ether);
         vm.deal(user1, 1 ether);
         vm.deal(user2, 1 ether);
+
+        // 4. Deploy the league contract
+        vm.startPrank(commissioner);
+        IERC20(USDC_ADDRESS).approve(address(factory), INITIAL_DUES);
+        address leagueAddr = factory.createLeague(LEAGUE_NAME, INITIAL_DUES, INITIAL_TEAM_NAME);
+        vm.stopPrank();
+        league = League_TESTNET(leagueAddr);
     }
 
     /**
@@ -300,5 +304,126 @@ contract League_TESTNET_Test is Test {
         vm.expectRevert(); // AccessControl revert
         league.removeTeam(user1);
         vm.stopPrank();
+    }
+
+    /**
+     * @dev Test closeLeague() functionality:
+     *      1) Creates a new season with 0 dues
+     *      2) Transfers full league balance to the commissioner
+     *      3) Calls removeLeague() on the factory
+     */
+    function testCloseLeague() public {
+        // 1) Let user1 join for some extra funds in the league
+        vm.startPrank(user1);
+        IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        league.joinSeason("User1Team");
+        vm.stopPrank();
+
+        // 2) Check the league's balance
+        uint256 leagueBalanceBefore = IERC20(USDC_ADDRESS).balanceOf(address(league));
+
+        // 3) Commissioner closes the league
+        vm.startPrank(commissioner);
+        league.closeLeague();
+        vm.stopPrank();
+
+        // 4) Confirm the league's USDC balance is now 0
+        uint256 leagueBalanceAfter = IERC20(USDC_ADDRESS).balanceOf(address(league));
+        assertEq(leagueBalanceAfter, 0, "League should have 0 after close");
+
+        // 5) Confirm commissioner got the league balance
+        uint256 commishBalance = IERC20(USDC_ADDRESS).balanceOf(commissioner);
+        // The commissioner started with 1000e6, spent 100e6 on createLeague,
+        // gained leagueBalanceBefore from closeLeague.
+        // The final must be: initial(1000e6) - 100e6 + leagueBalanceBefore = 900e6 + leagueBalanceBefore.
+        // But you can do a more direct check if you prefer:
+        // commishBalance should have incremented by leagueBalanceBefore:
+        //   commishBalanceBefore + leagueBalanceBefore == commishBalance
+        // We'll do it roughly:
+        assertEq(commishBalance, 1000e6 - INITIAL_DUES + leagueBalanceBefore, "Commissioner's final USDC mismatch");
+
+        // 6) Confirm a new season with 0 dues was created
+        League_TESTNET.SeasonData memory newSeason = league.currentSeason();
+        assertEq(newSeason.dues, 0, "Dues in new season should be 0 after closeLeague");
+
+        // 7) The league calls removeLeague() on the factory.
+        //    So the factory should have removed the league from its storage
+        address storedLeague = factory.leagueAddress(LEAGUE_NAME);
+        assertEq(storedLeague, address(0), "Factory should no longer store the league address");
+    }
+
+    /**
+     * @dev Only the commissioner can allocate a reward,
+     *      and the total must not exceed the league's balance.
+     */
+    function testAllocateReward() public {
+        // Let user1 join so the league has some USDC
+        vm.startPrank(user1);
+        IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        league.joinSeason("User1Team");
+        vm.stopPrank();
+
+        // Check the league's current balance
+        uint256 leagueBal = league.leagueBalance();
+        assertEq(leagueBal, INITIAL_DUES * 2, "League balance mismatch after user1 joined");
+
+        // Non-commissioner tries to allocate reward -> revert
+        vm.startPrank(user1);
+        vm.expectRevert(); // AccessControl
+        league.allocateReward(user2, 10e6);
+        vm.stopPrank();
+
+        // Commissioner can allocate
+        vm.startPrank(commissioner);
+        league.allocateReward(user1, 10e6);
+        vm.stopPrank();
+
+        // totalClaimableRewards should increase
+        uint256 totalClaimable = league.totalClaimableRewards();
+        assertEq(totalClaimable, 10e6, "totalClaimableRewards mismatch");
+
+        // Now if we try to allocate more than leagueBal, it should revert
+        vm.startPrank(commissioner);
+        vm.expectRevert(bytes("INSUFFICIENT_BALANCE"));
+        league.allocateReward(user1, leagueBal + 1);
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Test that users can claim previously allocated rewards
+     *      and that the reward array is cleared afterward.
+     */
+    function testClaimReward() public {
+        // Let user1 join
+        vm.startPrank(user1);
+        IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        league.joinSeason("User1Team");
+        vm.stopPrank();
+
+        // Let commissioner allocate some rewards to user1
+        uint256 rewardAmount = 30e6;
+        vm.startPrank(commissioner);
+        league.allocateReward(user1, rewardAmount);
+        vm.stopPrank();
+
+        // user1's USDC balance before claiming
+        uint256 user1BalBefore = IERC20(USDC_ADDRESS).balanceOf(user1);
+
+        // user1 claims
+        vm.startPrank(user1);
+        league.claimReward();
+        vm.stopPrank();
+
+        // user1's USDC balance after claiming
+        uint256 user1BalAfter = IERC20(USDC_ADDRESS).balanceOf(user1);
+        assertEq(user1BalAfter, user1BalBefore + rewardAmount, "User1 did not receive correct reward");
+
+        // totalClaimableRewards should have decreased
+        uint256 totalClaimable = league.totalClaimableRewards();
+        assertEq(totalClaimable, 0, "totalClaimableRewards should be 0 after claiming");
+
+        // Check that teamRewards[user1] is cleared
+        vm.expectRevert(); // Not available because it's empty
+        league.teamRewards(user1, 0);
     }
 }

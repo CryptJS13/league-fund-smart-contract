@@ -21,9 +21,15 @@ contract League_TESTNET is AccessControl {
         address wallet;
     }
 
+    struct RewardData {
+        uint256 amount;
+    }
+
     string public name;
     SeasonData[] public seasons;
     address[] public allTeams;
+    mapping(address => RewardData[]) public teamRewards;
+    uint256 public totalClaimableRewards;
 
     mapping(string => bool) public teamNameExists;
     mapping(address => bool) public teamWalletExists;
@@ -132,5 +138,24 @@ contract League_TESTNET is AccessControl {
         createSeason(0);
         IERC20(USDC).transfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
         ILeagueFactory(FACTORY).removeLeague();
+    }
+
+    function allocateReward(address _team, uint256 _amount) external onlyRole(COMMISSIONER_ROLE) {
+        totalClaimableRewards += _amount;
+        require(totalClaimableRewards <= leagueBalance(), "INSUFFICIENT_BALANCE");
+        teamRewards[_team].push(RewardData({amount: _amount}));
+    }
+
+    function claimReward() external {
+        uint256 totalRewards = 0;
+        RewardData[] storage rewards = teamRewards[msg.sender];
+        for (uint256 i = 0; i < rewards.length; i++) {
+            totalRewards += rewards[i].amount;
+        }
+        delete teamRewards[msg.sender];
+        if (totalRewards > 0) {
+            totalClaimableRewards -= totalRewards;
+            IERC20(USDC).transfer(msg.sender, totalRewards);
+        }
     }
 }
