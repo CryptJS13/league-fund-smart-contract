@@ -24,7 +24,8 @@ contract DeployLeagueRewardNFT is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // 3. Deploy the contract.
-        LeagueRewardNFT_TESTNET rewardNFT = new LeagueRewardNFT_TESTNET("League Fund Reward", "LFR", address(0xCD1B54C3F9Eb48Bbe730f3005ac05eF4DBD845c6));
+        LeagueRewardNFT_TESTNET rewardNFT =
+            new LeagueRewardNFT_TESTNET("League Fund Reward", "LFR", address(0xCD1B54C3F9Eb48Bbe730f3005ac05eF4DBD845c6));
 
         // 4. Log the factory’s deployed address for easy reference.
         console.log("LeagueRewardNFT_TESTNET deployed at:", address(rewardNFT));
