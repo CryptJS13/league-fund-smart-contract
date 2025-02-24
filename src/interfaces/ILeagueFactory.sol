@@ -8,11 +8,15 @@ interface ILeagueFactory {
 
     // Public constant
     function USDC() external view returns (address);
+    function owner() external view returns (address);
     function isFactory() external view returns (bool);
     function isLeague(address) external view returns (bool);
 
     function leagueRewardNFT() external view returns (address);
     function setLeagueRewardNFT(address _leagueRewardNFT) external;
+
+    function seasonCreationFee() external view returns (uint256);
+    function setSeasonCreationFee(uint256 _fee) external;
 
     // Public mappings
     function leagueAddress(string calldata) external view returns (address);

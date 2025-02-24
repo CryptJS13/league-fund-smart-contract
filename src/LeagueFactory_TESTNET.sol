@@ -10,15 +10,19 @@ import "./interfaces/ILeagueRewardNFT.sol";
 contract LeagueFactory_TESTNET is Ownable {
     bool public constant isFactory = true;
     address public constant USDC = address(0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B); // Testnet address
+
+    event LeagueCreated(string name, address league);
+    event LeagueRemoved(string name, address league);
+    event SetLeagueRewardNFT(address leagueRewardNFT);
+    event SetSeasonCreationFee(uint256 fee);
+
     address public leagueRewardNFT;
     mapping(string => address) public leagueAddress;
     mapping(address => string) public leagueName;
     mapping(address => bool) public isLeague;
     address[] public allLeagues;
 
-    event LeagueCreated(string name, address league);
-    event LeagueRemoved(string name, address league);
-    event SetLeagueRewardNFT(address leagueRewardNFT);
+    uint256 public seasonCreationFee = 0;
 
     constructor() Ownable(msg.sender) {}
 
@@ -28,6 +32,7 @@ contract LeagueFactory_TESTNET is Ownable {
 
     function createLeague(string memory _leagueName, uint256 _dues, string memory _teamName) external returns (address league) {
         require(leagueAddress[_leagueName] == address(0), "LEAGUE_EXISTS");
+        require(_dues >= seasonCreationFee, "DUES_TOO_LOW");
         League_TESTNET leagueContract = new League_TESTNET(_leagueName, _dues, _teamName, msg.sender);
         league = address(leagueContract);
         IERC20(USDC).transferFrom(msg.sender, league, _dues);
@@ -80,5 +85,10 @@ contract LeagueFactory_TESTNET is Ownable {
         require(ILeagueRewardNFT(_leagueRewardNFT).FACTORY() == address(this), "INVALID_FACTORY");
         leagueRewardNFT = _leagueRewardNFT;
         emit SetLeagueRewardNFT(_leagueRewardNFT);
+    }
+
+    function setSeasonCreationFee(uint256 _fee) external onlyOwner {
+        seasonCreationFee = _fee;
+        emit SetSeasonCreationFee(_fee);
     }
 }

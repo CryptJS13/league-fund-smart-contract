@@ -37,6 +37,7 @@ contract League_TESTNET is AccessControl {
     event RewardAllocated(address indexed team, string rewardName, uint256 amount);
     event RewardsClaimed(address indexed team, uint256 totalReward, uint256 rewardCount, string imageURL);
     event LeagueClosed(address indexed commissioner, uint256 finalBalance);
+    event FeePaid(address indexed league, address indexed receiver, uint256 amount);
 
     string public name;
     SeasonData[] public seasons;
@@ -127,19 +128,35 @@ contract League_TESTNET is AccessControl {
     }
 
     function createSeason(uint256 _dues) public onlyRole(COMMISSIONER_ROLE) {
+        uint256 fee = ILeagueFactory(FACTORY).seasonCreationFee();
+        require(_dues >= fee, "DUES_TOO_LOW");
         seasons.push(SeasonData({dues: _dues, teams: new address[](0)}));
+        joinSeason(teamName[msg.sender]);
+        if (fee > 0) {
+            IERC20(USDC).transfer(ILeagueFactory(FACTORY).owner(), fee);
+            emit FeePaid(address(this), ILeagueFactory(FACTORY).owner(), fee);
+        }
         emit SeasonCreated(seasons.length - 1, _dues);
     }
 
+    function _compareStrings(string memory _a, string memory _b) internal pure returns (bool) {
+        return keccak256(abi.encodePacked(_a)) == keccak256(abi.encodePacked(_b));
+    }
+
     function joinSeason(string memory _teamName) public onlyActive {
-        require(!teamNameExists[_teamName], "TEAM_NAME_EXISTS");
-        require(!teamWalletExists[msg.sender], "TEAM_WALLET_EXISTS");
-        teamNameExists[_teamName] = true;
-        teamWalletExists[msg.sender] = true;
-        teamName[msg.sender] = _teamName;
+        require(!isTeamActive(msg.sender), "TEAM_ALREADY_JOINED");
+        if (teamNameExists[_teamName]) {
+            require(_compareStrings(teamName[msg.sender], _teamName), "TEAM_NAME_MISMATCH");
+        } else if (teamWalletExists[msg.sender]) {
+            require(_compareStrings(teamName[msg.sender], _teamName), "TEAM_NAME_MISMATCH");
+        } else {
+            teamNameExists[_teamName] = true;
+            teamWalletExists[msg.sender] = true;
+            teamName[msg.sender] = _teamName;
+            allTeams.push(msg.sender);
+        }
         IERC20(USDC).transferFrom(msg.sender, address(this), currentSeason().dues);
         seasons[seasons.length - 1].teams.push(msg.sender);
-        allTeams.push(msg.sender);
         emit JoinedSeason(msg.sender, _teamName, seasons.length - 1);
     }
 
@@ -168,7 +185,6 @@ contract League_TESTNET is AccessControl {
     }
 
     function closeLeague() external onlyRole(COMMISSIONER_ROLE) {
-        createSeason(0);
         IERC20(USDC).transfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
         ILeagueFactory(FACTORY).removeLeague();
         emit LeagueClosed(msg.sender, IERC20(USDC).balanceOf(address(this)));

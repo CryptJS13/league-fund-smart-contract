@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../src/LeagueFactory_TESTNET.sol";
 import "../src/League_TESTNET.sol";
+import "../src/LeagueRewardNFT_TESTNET.sol";
 import "../src/interfaces/ILeague.sol";
 
 /**
@@ -16,6 +17,7 @@ import "../src/interfaces/ILeague.sol";
  */
 contract LeagueFactory_TESTNET_Test is Test {
     LeagueFactory_TESTNET factory;
+    LeagueRewardNFT_TESTNET rewardNFT;
 
     // Example parameters
     string internal constant LEAGUE_NAME = "MyLeague";
@@ -41,6 +43,7 @@ contract LeagueFactory_TESTNET_Test is Test {
         // 2. Deploy factory from "deployer"
         vm.startPrank(deployer);
         factory = new LeagueFactory_TESTNET();
+        rewardNFT = new LeagueRewardNFT_TESTNET("RewardNFT", "RNFT", address(factory));
         vm.stopPrank();
 
         // 3. Ensure user1 & user2 have USDC and have approved the factory.
@@ -209,5 +212,48 @@ contract LeagueFactory_TESTNET_Test is Test {
             if (leaguesUser2[i] == league2) foundL2 = true;
         }
         assertTrue(foundL1 && foundL2, "User2 missing expected leagues");
+    }
+
+    /**
+     * @dev Test setting the season creation fee and confirm createLeague reverts
+     *      if the dues < fee.
+     */
+    function testSeasonCreationFee() public {
+        // 1) The factory owner sets a season creation fee
+        vm.startPrank(deployer);
+        factory.setSeasonCreationFee(10e6); // 10 USDC
+        vm.stopPrank();
+
+        // 2) user1 tries to create a league with dues < fee => revert
+        vm.startPrank(user1);
+        IERC20(TEST_USDC).approve(address(factory), type(uint256).max);
+        vm.expectRevert(bytes("DUES_TOO_LOW"));
+        factory.createLeague(LEAGUE_NAME, 5e6, INITIAL_TEAM_NAME);
+
+        // 3) user1 creates a league with dues = 50e6 => success
+        address leagueAddr = factory.createLeague(LEAGUE_NAME, 50e6, INITIAL_TEAM_NAME);
+        vm.stopPrank();
+
+        assertTrue(leagueAddr != address(0), "leagueAddr is zero");
+    }
+
+    /**
+     * @dev Test that setLeagueRewardNFT requires the NFT's FACTORY() to be address(factory).
+     */
+    function testSetLeagueRewardNFT() public {
+        // 1) The real NFT's constructor sets FACTORY = the current factory
+        //    so passing it should succeed
+        vm.startPrank(deployer);
+        factory.setLeagueRewardNFT(address(rewardNFT));
+
+        // Check it was set
+        assertEq(factory.leagueRewardNFT(), address(rewardNFT), "leagueRewardNFT mismatch");
+
+        // 2) If we create a second NFT with a different FACTORY, it should revert
+        LeagueRewardNFT_TESTNET wrongNft = new LeagueRewardNFT_TESTNET("WrongNFT", "WNFT", address(0xDEADBEEF));
+
+        vm.expectRevert(bytes("INVALID_FACTORY"));
+        factory.setLeagueRewardNFT(address(wrongNft));
+        vm.stopPrank();
     }
 }

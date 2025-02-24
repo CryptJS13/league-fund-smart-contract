@@ -16,6 +16,8 @@ import "../src/interfaces/ILeagueFactory.sol";
  */
 contract League_TESTNET_Test is Test {
     League_TESTNET league;
+    LeagueFactory_TESTNET factory;
+    LeagueRewardNFT_TESTNET rewardNFT;
 
     // Example constructor params:
     string internal constant LEAGUE_NAME = "MyLeague";
@@ -33,8 +35,7 @@ contract League_TESTNET_Test is Test {
     address internal commissioner; // Deploy & has COMMISSIONER_ROLE
     address internal user1; // A random user who will join the league
     address internal user2; // Another user or treasurer
-    LeagueFactory_TESTNET internal factory; // We'll set this as a mock or use a real one if desired
-    LeagueRewardNFT_TESTNET internal rewardNFT; // We'll set this as a mock or use a real one if desired
+    address internal factoryOwner; // The owner of the factory contract
 
     /**
      * @dev Runs before each test. Sets up fresh state:
@@ -52,6 +53,8 @@ contract League_TESTNET_Test is Test {
         rewardNFT = new LeagueRewardNFT_TESTNET("testNFT", "testNFT", address(factory));
 
         factory.setLeagueRewardNFT(address(rewardNFT));
+        factory.setSeasonCreationFee(10e6); // 10 USDC
+        factoryOwner = factory.owner();
 
         // 3. Give commissioner, user1, user2 some USDC & ETH on a fork
         //    (Here we mock a "usdcHolder" who has enough USDC.)
@@ -101,19 +104,43 @@ contract League_TESTNET_Test is Test {
         assertTrue(isTreasurer, "Commissioner should also be Treasurer initially");
     }
 
-    /**
-     * @dev Test that the commissioner can create a new season.
-     */
-    function testCreateSeason() public {
-        // Impersonate commissioner
+    function testCreateSeasonWithFee() public {
+        // The factory's seasonCreationFee is 10e6
+        // Let's create a new season with dues = 50e6 (> fee)
         vm.startPrank(commissioner);
 
-        // Create new season
+        // Before we call createSeason, let's record the factoryOwner's balance
+        uint256 oldOwnerBal = IERC20(USDC_ADDRESS).balanceOf(factoryOwner);
+
+        // Approve the league to spend USDC if needed
+        // Actually, the league calls transferFrom internally on commissioner
+        IERC20(USDC_ADDRESS).approve(address(league), 50e6);
+
+        // Create the new season
         league.createSeason(50e6);
 
-        // Confirm we now have 2 seasons in total
-        League_TESTNET.SeasonData memory current = league.currentSeason();
-        assertEq(current.dues, 50e6, "Dues mismatch for new season");
+        // Confirm the fee was transferred to factoryOwner
+        uint256 newOwnerBal = IERC20(USDC_ADDRESS).balanceOf(factoryOwner);
+        assertEq(newOwnerBal, oldOwnerBal + 10e6, "Factory owner did not receive correct fee");
+
+        // Confirm the new season got created
+        League_TESTNET.SeasonData memory s = league.currentSeason();
+        assertEq(s.dues, 50e6, "New season dues mismatch");
+        // Commissioner should have joined automatically via the code in createSeason()
+        bool isActive = league.isTeamActive(commissioner);
+        assertTrue(isActive, "Commissioner didn't join new season automatically");
+
+        vm.stopPrank();
+    }
+
+    function testCreateSeasonDuesTooLow() public {
+        // The factory's seasonCreationFee is 10e6, so if we try to create a season with fewer dues,
+        // we should revert with "DUES_TOO_LOW"
+        vm.startPrank(commissioner);
+        IERC20(USDC_ADDRESS).approve(address(league), 5e6);
+
+        vm.expectRevert(bytes("DUES_TOO_LOW"));
+        league.createSeason(5e6); // less than fee
 
         vm.stopPrank();
     }
@@ -149,31 +176,44 @@ contract League_TESTNET_Test is Test {
         assertEq(teams[1].wallet, user1, "Team wallet mismatch");
     }
 
-    /**
-     * @dev Test that joining with an existing team name reverts with "TEAM_NAME_EXISTS".
-     */
-    function testCannotJoinWithDuplicateTeamName() public {
-        // The constructor used "CommissionerTeam" as the initial name
+    function testTeamAlreadyJoined() public {
+        // user1 joins once
         vm.startPrank(user1);
         IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        league.joinSeason("User1Team");
+        vm.stopPrank();
 
-        // Attempt to join with the same name as the existing team
-        vm.expectRevert(bytes("TEAM_NAME_EXISTS"));
-        league.joinSeason(INITIAL_TEAM_NAME);
+        // user1 tries to join again in the same season
+        vm.startPrank(user1);
+        IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        vm.expectRevert(bytes("TEAM_ALREADY_JOINED"));
+        league.joinSeason("User1Team");
         vm.stopPrank();
     }
 
-    /**
-     * @dev Test that we cannot joinSeason with a wallet that already joined.
-     */
-    function testCannotJoinWithDuplicateWallet() public {
-        // The constructor already used "commissioner" as a participant
-        vm.startPrank(commissioner);
+    function testTeamNameMismatch() public {
+        // user1 joins once with "User1Team"
+        vm.startPrank(user1);
         IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        league.joinSeason("User1Team");
+        vm.stopPrank();
 
-        // Try to join the same wallet with a different name
-        vm.expectRevert(bytes("TEAM_WALLET_EXISTS"));
-        league.joinSeason("AnotherCommishTeamName");
+        // user1 tries to join again (or in a new season) with a different name,
+        // but the code sees that teamNameExists[...] = true for the old name,
+        // so it checks _compareStrings with the user's stored name.
+        // We'll create a new season so user1 can "join" it again,
+        // but with a mismatched name string. The commissioner calls createSeason =>
+        // user1 would need to join that new season with the same team name or revert.
+        vm.startPrank(commissioner);
+        IERC20(USDC_ADDRESS).approve(address(league), 50e6);
+        league.createSeason(50e6);
+        vm.stopPrank();
+
+        // user1 tries to join the new season with a *different* name
+        vm.startPrank(user1);
+        IERC20(USDC_ADDRESS).approve(address(league), 50e6);
+        vm.expectRevert(bytes("TEAM_NAME_MISMATCH"));
+        league.joinSeason("User1TeamButDifferent");
         vm.stopPrank();
     }
 
@@ -256,12 +296,13 @@ contract League_TESTNET_Test is Test {
 
         // Now commissioner creates a new season
         vm.startPrank(commissioner);
-        league.createSeason(0);
+        IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
+        league.createSeason(INITIAL_DUES);
         vm.stopPrank();
 
-        // The new season has 0 teams initially
+        // The new season has 1 teams initially
         League_TESTNET.TeamData[] memory activeTeams2 = league.getActiveTeams();
-        assertEq(activeTeams2.length, 0, "No teams in new season by default");
+        assertEq(activeTeams2.length, 1, "Only commissioner team in new season");
 
         // But getAllTeams() still includes the old 3 teams that joined previously
         League_TESTNET.TeamData[] memory allT2 = league.getAllTeams();
@@ -347,11 +388,7 @@ contract League_TESTNET_Test is Test {
         // We'll do it roughly:
         assertEq(commishBalance, 1000e6 - INITIAL_DUES + leagueBalanceBefore, "Commissioner's final USDC mismatch");
 
-        // 6) Confirm a new season with 0 dues was created
-        League_TESTNET.SeasonData memory newSeason = league.currentSeason();
-        assertEq(newSeason.dues, 0, "Dues in new season should be 0 after closeLeague");
-
-        // 7) The league calls removeLeague() on the factory.
+        // 6) The league calls removeLeague() on the factory.
         //    So the factory should have removed the league from its storage
         address storedLeague = factory.leagueAddress(LEAGUE_NAME);
         assertEq(storedLeague, address(0), "Factory should no longer store the league address");
