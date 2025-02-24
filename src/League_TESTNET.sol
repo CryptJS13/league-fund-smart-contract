@@ -27,6 +27,17 @@ contract League_TESTNET is AccessControl {
         uint256 amount;
     }
 
+    event LeagueInitialized(string leagueName, address commissioner, uint256 initialDues);
+    event SeasonCreated(uint256 indexed seasonIndex, uint256 dues);
+    event JoinedSeason(address indexed teamWallet, string teamName, uint256 seasonIndex);
+    event TeamRemoved(address indexed teamWallet, uint256 seasonIndex);
+    event CommissionerChanged(address indexed oldCommissioner, address indexed newCommissioner);
+    event TreasurerAdded(address indexed newTreasurer);
+    event TreasurerRemoved(address indexed oldTreasurer);
+    event RewardAllocated(address indexed team, string rewardName, uint256 amount);
+    event RewardsClaimed(address indexed team, uint256 totalReward, uint256 rewardCount, string imageURL);
+    event LeagueClosed(address indexed commissioner, uint256 finalBalance);
+
     string public name;
     SeasonData[] public seasons;
     address[] public allTeams;
@@ -69,6 +80,7 @@ contract League_TESTNET is AccessControl {
         teamName[_commissioner] = _teamName;
         seasons[0].teams.push(_commissioner);
         allTeams.push(_commissioner);
+        emit LeagueInitialized(name, _commissioner, _dues);
     }
 
     function leagueBalance() public view returns (uint256) {
@@ -101,18 +113,22 @@ contract League_TESTNET is AccessControl {
     function setCommissioner(address _commissioner) external onlyRole(COMMISSIONER_ROLE) {
         _grantRole(COMMISSIONER_ROLE, _commissioner);
         _revokeRole(COMMISSIONER_ROLE, msg.sender);
+        emit CommissionerChanged(msg.sender, _commissioner);
     }
 
     function addTreasurer(address _treasurer) external onlyRole(COMMISSIONER_ROLE) {
         _grantRole(TREASURER_ROLE, _treasurer);
+        emit TreasurerAdded(_treasurer);
     }
 
     function removeTreasurer(address _treasurer) external onlyRole(COMMISSIONER_ROLE) {
         _revokeRole(TREASURER_ROLE, _treasurer);
+        emit TreasurerRemoved(_treasurer);
     }
 
     function createSeason(uint256 _dues) public onlyRole(COMMISSIONER_ROLE) {
         seasons.push(SeasonData({dues: _dues, teams: new address[](0)}));
+        emit SeasonCreated(seasons.length - 1, _dues);
     }
 
     function joinSeason(string memory _teamName) public onlyActive {
@@ -124,6 +140,7 @@ contract League_TESTNET is AccessControl {
         IERC20(USDC).transferFrom(msg.sender, address(this), currentSeason().dues);
         seasons[seasons.length - 1].teams.push(msg.sender);
         allTeams.push(msg.sender);
+        emit JoinedSeason(msg.sender, _teamName, seasons.length - 1);
     }
 
     function isTeamActive(address _team) public view returns (bool) {
@@ -147,12 +164,14 @@ contract League_TESTNET is AccessControl {
                 break;
             }
         }
+        emit TeamRemoved(_team, seasons.length - 1);
     }
 
     function closeLeague() external onlyRole(COMMISSIONER_ROLE) {
         createSeason(0);
         IERC20(USDC).transfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
         ILeagueFactory(FACTORY).removeLeague();
+        emit LeagueClosed(msg.sender, IERC20(USDC).balanceOf(address(this)));
     }
 
     function allocateReward(address _team, string memory _name, uint256 _amount) external onlyRole(COMMISSIONER_ROLE) {
@@ -160,6 +179,7 @@ contract League_TESTNET is AccessControl {
         totalClaimableRewards += _amount;
         require(totalClaimableRewards <= leagueBalance(), "INSUFFICIENT_BALANCE");
         teamRewards[_team].push(RewardData({name: _name, amount: _amount}));
+        emit RewardAllocated(_team, _name, _amount);
     }
 
     function claimReward(string memory imageURL) external {
@@ -171,6 +191,7 @@ contract League_TESTNET is AccessControl {
             );
             totalRewards += rewards[i].amount;
         }
+        emit RewardsClaimed(msg.sender, totalRewards, rewards.length, imageURL);
         delete teamRewards[msg.sender];
         if (totalRewards > 0) {
             totalClaimableRewards -= totalRewards;

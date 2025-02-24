@@ -8,9 +8,9 @@ import "./interfaces/ILeague.sol";
 import "./interfaces/ILeagueRewardNFT.sol";
 
 contract LeagueFactory_TESTNET is Ownable {
+    bool public constant isFactory = true;
     address public constant USDC = address(0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B); // Testnet address
     address public leagueRewardNFT;
-    bool public constant isFactory = true;
     mapping(string => address) public leagueAddress;
     mapping(address => string) public leagueName;
     mapping(address => bool) public isLeague;
@@ -18,6 +18,7 @@ contract LeagueFactory_TESTNET is Ownable {
 
     event LeagueCreated(string name, address league);
     event LeagueRemoved(string name, address league);
+    event SetLeagueRewardNFT(address leagueRewardNFT);
 
     constructor() Ownable(msg.sender) {}
 
@@ -78,5 +79,6 @@ contract LeagueFactory_TESTNET is Ownable {
     function setLeagueRewardNFT(address _leagueRewardNFT) external onlyOwner {
         require(ILeagueRewardNFT(_leagueRewardNFT).FACTORY() == address(this), "INVALID_FACTORY");
         leagueRewardNFT = _leagueRewardNFT;
+        emit SetLeagueRewardNFT(_leagueRewardNFT);
     }
 }
