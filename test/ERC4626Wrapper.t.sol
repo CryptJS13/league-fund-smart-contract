@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 // Your contracts
 import "../src/yieldVaults/MockERC4626.sol";
 import "../src/yieldVaults/ERC4626Wrapper.sol";
+import "../src/League_TESTNET.sol";
+import "../src/LeagueFactory_TESTNET.sol";
 
 /**
  * @title ERC4626WrapperTest
@@ -18,12 +20,15 @@ contract ERC4626WrapperTest is Test {
     address internal constant USDC_ADDRESS = 0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B;
 
     // We'll define test users
+    address internal commissioner;
     address internal user1;
     address internal user2;
 
     // The underlying mock vault and the wrapper
     MockERC4626 internal mockVault;
     ERC4626Wrapper internal wrapper;
+    LeagueFactory_TESTNET internal factory;
+    League_TESTNET internal league;
 
     /**
      * @dev Runs once before each test.
@@ -33,34 +38,39 @@ contract ERC4626WrapperTest is Test {
      */
     function setUp() public {
         // Label addresses for readability
-        user1 = makeAddr("User1");
-        user2 = makeAddr("User2");
+        commissioner = makeAddr("commissioner");
+
+        factory = new LeagueFactory_TESTNET();
 
         // 1. Deploy the mock vault referencing the token at USDC_ADDRESS
         //    Under the hood, the mock vault sees USDC_ADDRESS as an IERC20Metadata
         mockVault = new MockERC4626(IERC20Metadata(USDC_ADDRESS));
 
         // 2. Deploy the wrapper pointing to the mockVault
-        wrapper = new ERC4626Wrapper(mockVault);
+        wrapper = new ERC4626Wrapper(mockVault, address(factory));
 
         // 3. Give commissioner, user1, user2 some USDC & ETH on a fork
         //    (Here we mock a "usdcHolder" who has enough USDC.)
         //    Adjust these addresses to real whales if needed on a real fork.
         address usdcHolder = address(0xE262C1e7c5177E28E51A5cf1C6944470697B2c9F);
         vm.startPrank(usdcHolder);
-        IERC20(USDC_ADDRESS).transfer(user1, 500000e6);
-        IERC20(USDC_ADDRESS).transfer(user2, 200000e6);
+        IERC20(USDC_ADDRESS).transfer(commissioner, 700000e6);
         vm.stopPrank();
 
         // Give them some ETH for gas
-        vm.deal(user1, 1 ether);
-        vm.deal(user2, 1 ether);
+        vm.deal(commissioner, 1 ether);
+
+        vm.startPrank(commissioner);
+        IERC20(USDC_ADDRESS).approve(address(factory), 700000e6);
+        user1 = factory.createLeague("League Name 1", 500000e6, "Team Name");
+        user2 = factory.createLeague("League Name 2", 200000e6, "Team Name");
+        vm.stopPrank();
     }
 
     /**
      * @dev Test depositing into the wrapper, which itself deposits into the mock vault.
      */
-    function testDepositAndWithdraw() public {
+    function testDepositAndRedeem() public {
         // user1 will deposit 100,000 units into the wrapper
         uint256 depositAmount = 100_000e6;
 
@@ -80,75 +90,36 @@ contract ERC4626WrapperTest is Test {
         uint256 underlyingShares = mockVault.balanceOf(address(wrapper));
         assertEq(underlyingShares, wrapperShares, "Wrapper's underlying vault share mismatch");
 
-        // user1 now wants to withdraw half of the deposit => 50,000
+        // user1 now wants to redeem half of the deposit => 50,000
         vm.startPrank(user1);
         // Approve wrapper shares to the wrapper if needed.
         // In your code, if user1 = _owner, no allowance check is needed. We'll just confirm it works
-        uint256 sharesWithdrawn = wrapper.withdraw(50_000e6, user1, user1);
+        uint256 sharesWithdrawn = wrapper.redeem(50_000e6, user1, user1);
         vm.stopPrank();
 
         // sharesWithdrawn should be ~ the shares that represent 50,000 assets
         // the mock's ratio is basically 1:1 if no other deposits.
         // So sharesWithdrawn ~ 50k if the ratio hasn't changed
-        assertEq(sharesWithdrawn, 50_000e6, "Shares withdrawn mismatch");
+        assertEq(sharesWithdrawn, 50_000e6, "Shares redeemed mismatch");
 
         // user1's new wrapper share balance => originally had wrapperShares, burned some
         uint256 user1SharesAfter = wrapper.balanceOf(user1);
-        assertEq(user1SharesAfter, wrapperShares - sharesWithdrawn, "User1 share balance after partial withdraw mismatch");
+        assertEq(user1SharesAfter, wrapperShares - sharesWithdrawn, "User1 share balance after partial redeem mismatch");
 
         // user1's asset balance should have increased by 50k from the wrapper
         // but we started with 500k, used 100k in deposit => 400k left, then got 50k back => 450k
         // We can check actual final. We'll do a small approximate check:
         uint256 user1FinalAssetBal = IERC20(USDC_ADDRESS).balanceOf(user1);
         // ~ 450k
-        assertEq(user1FinalAssetBal, 450_000e6, "User1 final asset balance mismatch after partial withdraw");
+        assertEq(user1FinalAssetBal, 450_000e6, "User1 final asset balance mismatch after partial redeem");
 
         // Also the wrapper's underlying shares should have decreased correspondingly
         uint256 wrapperUnderlyingSharesAfter = mockVault.balanceOf(address(wrapper));
         assertEq(
             wrapperUnderlyingSharesAfter,
             underlyingShares - sharesWithdrawn,
-            "Wrapper's vault share after partial withdraw mismatch"
+            "Wrapper's vault share after partial redeem mismatch"
         );
-    }
-
-    /**
-     * @dev Test minting shares in the wrapper, which calls underlyingVault.mint(...) internally.
-     */
-    function testMintAndRedeem() public {
-        // user2 wants to mint 200_000 "wrapper shares"
-        uint256 sharesToMint = 200_000e6;
-
-        vm.startPrank(user2);
-        IERC20(USDC_ADDRESS).approve(address(wrapper), type(uint256).max);
-
-        // 1. wrapper.mint => underlyingVault.mint => user2 supplies assets in proportion
-        //    The wrapper mints exactly `sharesToMint` to user2
-        uint256 assetsSpent = wrapper.mint(sharesToMint, user2);
-
-        vm.stopPrank();
-
-        // user2 should have exactly `sharesToMint` from the wrapper
-        assertEq(wrapper.balanceOf(user2), sharesToMint, "User2 wrapper share balance mismatch after mint");
-
-        // The assetsSpent is how many tokens user2 had to supply.
-        // Typically 1:1 if the vault is empty initially, so ~ 200k
-        uint256 user2FinalAssetBal = IERC20(USDC_ADDRESS).balanceOf(user2);
-        // user2 started with 200k, spent assetsSpent
-        assertEq(user2FinalAssetBal, 200_000e6 - assetsSpent, "User2 final asset balance mismatch");
-
-        // Now user2 redeems all shares => gets back assets
-        vm.startPrank(user2);
-        wrapper.redeem(sharesToMint, user2, user2);
-        vm.stopPrank();
-
-        // Should burn user2's entire share balance
-        assertEq(wrapper.balanceOf(user2), 0, "User2 should have 0 wrapper shares after full redeem");
-
-        // redeemedAssets should match what they spent (minus any ratio changes or zero?),
-        // so user2's final asset balance ~ 500k again
-        user2FinalAssetBal = IERC20(USDC_ADDRESS).balanceOf(user2);
-        assertEq(user2FinalAssetBal, 200_000e6, "User2 final asset balance mismatch after redeem");
     }
 
     // --------------------------------------------------------------------
@@ -163,28 +134,11 @@ contract ERC4626WrapperTest is Test {
         vm.stopPrank();
     }
 
-    function testZeroMintReverts() public {
-        vm.startPrank(user1);
-        vm.expectRevert(bytes("Cannot mint 0"));
-        wrapper.mint(0, user1);
-        vm.stopPrank();
-    }
-
-    function testZeroWithdrawReverts() public {
-        // First user1 deposits something
-        vm.startPrank(user1);
-        IERC20(USDC_ADDRESS).approve(address(wrapper), 10_000e6);
-        wrapper.deposit(10_000e6, user1);
-        vm.expectRevert(bytes("Cannot withdraw 0"));
-        wrapper.withdraw(0, user1, user1);
-        vm.stopPrank();
-    }
-
     function testZeroRedeemReverts() public {
-        // user1 mints some shares
+        // user1 deposits some shares
         vm.startPrank(user1);
         IERC20(USDC_ADDRESS).approve(address(wrapper), 10_000e6);
-        wrapper.mint(5_000e6, user1); // user1 mints 5k shares
+        wrapper.deposit(5_000e6, user1); // user1 mints 5k shares
         vm.expectRevert(bytes("Cannot redeem 0"));
         wrapper.redeem(0, user1, user1);
         vm.stopPrank();
@@ -215,7 +169,7 @@ contract ERC4626WrapperTest is Test {
 
         // user2 withdraws 100k (half of deposit)
         vm.startPrank(user2);
-        uint256 sharesBurned = wrapper.withdraw(100_000e6, user2, user2);
+        uint256 sharesBurned = wrapper.redeem(100_000e6, user2, user2);
         vm.stopPrank();
 
         // user2's remaining shares => sharesU2 - sharesBurned
@@ -250,29 +204,6 @@ contract ERC4626WrapperTest is Test {
     }
 
     /**
-     * @dev Fuzzing test for minting shares.
-     *      We randomize sharesToMint within a range.
-     */
-    function testFuzzMint(uint256 sharesToMint) public {
-        // We can pick a range for shares [1, 200000e6] for example
-        sharesToMint = bound(sharesToMint, 1, 200000e6);
-
-        vm.startPrank(user2);
-        // Approve
-        IERC20(USDC_ADDRESS).approve(address(wrapper), type(uint256).max);
-
-        // Attempt to mint
-        wrapper.mint(sharesToMint, user2);
-        vm.stopPrank();
-
-        // user2 share balance => sharesToMint
-        assertEq(wrapper.balanceOf(user2), sharesToMint, "User2 minted share mismatch");
-
-        // assetsSpent is how many assets the user provided to get sharesToMint
-        // We'll skip advanced ratio checks—just confirm user2's final share is as expected.
-    }
-
-    /**
      * @dev Fuzz test partial withdraw after a deposit
      */
     function testFuzzWithdrawAfterDeposit(uint256 depositAmount, uint256 withdrawAmount) public {
@@ -286,7 +217,7 @@ contract ERC4626WrapperTest is Test {
         wrapper.deposit(depositAmount, user1);
         // user1 now tries to withdraw "withdrawAmount"
         // Some amount must be > 0
-        uint256 sharesBurned = wrapper.withdraw(withdrawAmount, user1, user1);
+        uint256 sharesBurned = wrapper.redeem(withdrawAmount, user1, user1);
         vm.stopPrank();
 
         // We only check that user1's final share and asset balances are consistent,

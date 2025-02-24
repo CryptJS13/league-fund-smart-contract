@@ -47,6 +47,7 @@ contract LeagueRewardNFT_TESTNET is ERC721 {
     }
 
     constructor(string memory _name, string memory _symbol, address _factory) ERC721(_name, _symbol) {
+        require(ILeagueFactory(_factory).isFactory(), "NOT_FACTORY");
         FACTORY = _factory;
     }
 

@@ -250,10 +250,8 @@ contract LeagueFactory_TESTNET_Test is Test {
         assertEq(factory.leagueRewardNFT(), address(rewardNFT), "leagueRewardNFT mismatch");
 
         // 2) If we create a second NFT with a different FACTORY, it should revert
-        LeagueRewardNFT_TESTNET wrongNft = new LeagueRewardNFT_TESTNET("WrongNFT", "WNFT", address(0xDEADBEEF));
-
-        vm.expectRevert(bytes("INVALID_FACTORY"));
-        factory.setLeagueRewardNFT(address(wrongNft));
+        vm.expectRevert();
+        new LeagueRewardNFT_TESTNET("WrongNFT", "WNFT", address(0xDEADBEEF));
         vm.stopPrank();
     }
 }
