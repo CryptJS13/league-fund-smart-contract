@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/ILeagueFactory.sol";
+import "./interfaces/ILeagueRewardNFT.sol";
 
 contract League_TESTNET is AccessControl {
     bytes32 public constant COMMISSIONER_ROLE = keccak256("COMMISSIONER_ROLE");
@@ -22,6 +23,7 @@ contract League_TESTNET is AccessControl {
     }
 
     struct RewardData {
+        string name;
         uint256 amount;
     }
 
@@ -35,7 +37,13 @@ contract League_TESTNET is AccessControl {
     mapping(address => bool) public teamWalletExists;
     mapping(address => string) public teamName;
 
+    modifier onlyActive() {
+        require(isActive(), "LEAGUE_NOT_ACTIVE");
+        _;
+    }
+
     constructor(string memory _leagueName, uint256 _dues, string memory _teamName, address _commissioner) {
+        require(ILeagueFactory(msg.sender).isFactory(), "NOT_FACTORY");
         FACTORY = msg.sender;
         _setRoleAdmin(TREASURER_ROLE, COMMISSIONER_ROLE);
         _setRoleAdmin(COMMISSIONER_ROLE, COMMISSIONER_ROLE);
@@ -44,6 +52,13 @@ contract League_TESTNET is AccessControl {
         name = _leagueName;
 
         initLeague(_dues, _teamName, _commissioner);
+    }
+
+    function isActive() public view returns (bool) {
+        if (FACTORY != address(0)) {
+            return ILeagueFactory(FACTORY).isLeague(address(this));
+        }
+        return false;
     }
 
     function initLeague(uint256 _dues, string memory _teamName, address _commissioner) private {
@@ -100,7 +115,7 @@ contract League_TESTNET is AccessControl {
         seasons.push(SeasonData({dues: _dues, teams: new address[](0)}));
     }
 
-    function joinSeason(string memory _teamName) public {
+    function joinSeason(string memory _teamName) public onlyActive {
         require(!teamNameExists[_teamName], "TEAM_NAME_EXISTS");
         require(!teamWalletExists[msg.sender], "TEAM_WALLET_EXISTS");
         teamNameExists[_teamName] = true;
@@ -140,16 +155,20 @@ contract League_TESTNET is AccessControl {
         ILeagueFactory(FACTORY).removeLeague();
     }
 
-    function allocateReward(address _team, uint256 _amount) external onlyRole(COMMISSIONER_ROLE) {
+    function allocateReward(address _team, string memory _name, uint256 _amount) external onlyRole(COMMISSIONER_ROLE) {
+        require(isTeamActive(_team), "TEAM_NOT_IN_SEASON");
         totalClaimableRewards += _amount;
         require(totalClaimableRewards <= leagueBalance(), "INSUFFICIENT_BALANCE");
-        teamRewards[_team].push(RewardData({amount: _amount}));
+        teamRewards[_team].push(RewardData({name: _name, amount: _amount}));
     }
 
-    function claimReward() external {
+    function claimReward(string memory imageURL) external {
         uint256 totalRewards = 0;
         RewardData[] storage rewards = teamRewards[msg.sender];
         for (uint256 i = 0; i < rewards.length; i++) {
+            ILeagueRewardNFT(ILeagueFactory(FACTORY).leagueRewardNFT()).mintReward(
+                msg.sender, name, teamName[msg.sender], rewards[i].name, rewards[i].amount, imageURL
+            );
             totalRewards += rewards[i].amount;
         }
         delete teamRewards[msg.sender];

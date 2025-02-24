@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../src/League_TESTNET.sol";
 import "../src/LeagueFactory_TESTNET.sol";
+import "../src/LeagueRewardNFT_TESTNET.sol";
 import "../src/interfaces/ILeagueFactory.sol";
 
 /**
@@ -33,6 +34,7 @@ contract League_TESTNET_Test is Test {
     address internal user1; // A random user who will join the league
     address internal user2; // Another user or treasurer
     LeagueFactory_TESTNET internal factory; // We'll set this as a mock or use a real one if desired
+    LeagueRewardNFT_TESTNET internal rewardNFT; // We'll set this as a mock or use a real one if desired
 
     /**
      * @dev Runs before each test. Sets up fresh state:
@@ -47,6 +49,9 @@ contract League_TESTNET_Test is Test {
 
         // 2. Pretend the league was deployed by some factory address (or real one).
         factory = new LeagueFactory_TESTNET();
+        rewardNFT = new LeagueRewardNFT_TESTNET("testNFT", "testNFT", address(factory));
+
+        factory.setLeagueRewardNFT(address(rewardNFT));
 
         // 3. Give commissioner, user1, user2 some USDC & ETH on a fork
         //    (Here we mock a "usdcHolder" who has enough USDC.)
@@ -370,12 +375,12 @@ contract League_TESTNET_Test is Test {
         // Non-commissioner tries to allocate reward -> revert
         vm.startPrank(user1);
         vm.expectRevert(); // AccessControl
-        league.allocateReward(user2, 10e6);
+        league.allocateReward(user2, "reward", 10e6);
         vm.stopPrank();
 
         // Commissioner can allocate
         vm.startPrank(commissioner);
-        league.allocateReward(user1, 10e6);
+        league.allocateReward(user1, "reward", 10e6);
         vm.stopPrank();
 
         // totalClaimableRewards should increase
@@ -385,45 +390,62 @@ contract League_TESTNET_Test is Test {
         // Now if we try to allocate more than leagueBal, it should revert
         vm.startPrank(commissioner);
         vm.expectRevert(bytes("INSUFFICIENT_BALANCE"));
-        league.allocateReward(user1, leagueBal + 1);
+        league.allocateReward(user1, "reward", leagueBal + 1);
         vm.stopPrank();
     }
 
     /**
      * @dev Test that users can claim previously allocated rewards
-     *      and that the reward array is cleared afterward.
+     *      and that the reward array is cleared afterward, plus
+     *      confirm that an NFT is minted for each reward.
      */
     function testClaimReward() public {
-        // Let user1 join
+        // 1) Let user1 join
         vm.startPrank(user1);
         IERC20(USDC_ADDRESS).approve(address(league), INITIAL_DUES);
         league.joinSeason("User1Team");
         vm.stopPrank();
 
-        // Let commissioner allocate some rewards to user1
-        uint256 rewardAmount = 30e6;
+        // 2) Commissioner allocates multiple rewards
+        uint256 rewardAmountA = 30e6;
+        uint256 rewardAmountB = 20e6;
+
         vm.startPrank(commissioner);
-        league.allocateReward(user1, rewardAmount);
+        league.allocateReward(user1, "Reward A", rewardAmountA);
+        league.allocateReward(user1, "Reward B", rewardAmountB);
         vm.stopPrank();
 
-        // user1's USDC balance before claiming
+        // 3) user1's USDC balance before claiming
         uint256 user1BalBefore = IERC20(USDC_ADDRESS).balanceOf(user1);
 
-        // user1 claims
+        // 4) user1 claims
         vm.startPrank(user1);
-        league.claimReward();
+        league.claimReward(
+            "https://www.shutterstock.com/image-vector/fantasy-football-champion-trending-vector-260nw-2117867153.jpg"
+        );
         vm.stopPrank();
 
-        // user1's USDC balance after claiming
+        // 5) user1's USDC balance after
         uint256 user1BalAfter = IERC20(USDC_ADDRESS).balanceOf(user1);
-        assertEq(user1BalAfter, user1BalBefore + rewardAmount, "User1 did not receive correct reward");
+        uint256 totalReward = rewardAmountA + rewardAmountB;
+        assertEq(user1BalAfter, user1BalBefore + totalReward, "User1 did not receive the correct USDC reward");
 
-        // totalClaimableRewards should have decreased
+        // 6) totalClaimableRewards should have decreased to 0
         uint256 totalClaimable = league.totalClaimableRewards();
         assertEq(totalClaimable, 0, "totalClaimableRewards should be 0 after claiming");
 
-        // Check that teamRewards[user1] is cleared
-        vm.expectRevert(); // Not available because it's empty
+        // 7) teamRewards[user1] is cleared
+        vm.expectRevert(); // Index out of range
         league.teamRewards(user1, 0);
+
+        // 8) Verify that 2 NFTs were minted to user1
+        //    Let's check ownership. The contract minted tokens #1 and #2 (based on `_currentTokenId`).
+        //    We'll confirm that user1 is the owner for both in the RewardNFT contract.
+        address nftAddr = factory.leagueRewardNFT(); // should return address(rewardNft)
+        LeagueRewardNFT_TESTNET nft = LeagueRewardNFT_TESTNET(nftAddr);
+
+        // Check owners
+        assertEq(nft.ownerOf(1), user1, "NFT #1 should be owned by user1");
+        assertEq(nft.ownerOf(2), user1, "NFT #2 should be owned by user1");
     }
 }
