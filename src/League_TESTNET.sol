@@ -3,14 +3,15 @@ pragma solidity 0.8.28;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./interfaces/ILeagueFactory.sol";
 
 contract League_TESTNET is AccessControl {
     bytes32 public constant COMMISSIONER_ROLE = keccak256("COMMISSIONER_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
     address public constant USDC = address(0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B); // Testnet address
+    address public FACTORY;
 
     struct SeasonData {
-        string name;
         uint256 dues;
         address[] teams;
     }
@@ -22,43 +23,42 @@ contract League_TESTNET is AccessControl {
 
     string public name;
     SeasonData[] public seasons;
-    TeamData[] public allTeams;
+    address[] public allTeams;
 
-    mapping(string => bool) public seasonExists;
-    mapping(string => bool) public teamExists;
+    mapping(string => bool) public teamNameExists;
+    mapping(address => bool) public teamWalletExists;
     mapping(address => string) public teamName;
 
-    constructor(
-        string memory _leagueName,
-        address _commissioner,
-        string memory _seasonName,
-        uint256 _dues,
-        string memory _teamName
-    ) {
+    constructor(string memory _leagueName, uint256 _dues, string memory _teamName, address _commissioner) {
+        FACTORY = msg.sender;
         _setRoleAdmin(TREASURER_ROLE, COMMISSIONER_ROLE);
         _setRoleAdmin(COMMISSIONER_ROLE, COMMISSIONER_ROLE);
         _grantRole(COMMISSIONER_ROLE, _commissioner);
         _grantRole(TREASURER_ROLE, _commissioner);
         name = _leagueName;
 
-        initLeague(_seasonName, _dues, _teamName, _commissioner);
+        initLeague(_dues, _teamName, _commissioner);
     }
 
-    function initLeague(string memory _seasonName, uint256 _dues, string memory _teamName, address _commissioner) private {
+    function initLeague(uint256 _dues, string memory _teamName, address _commissioner) private {
         require(seasons.length == 0, "INITIALIZED");
-        seasonExists[_seasonName] = true;
-        seasons.push(SeasonData({name: _seasonName, dues: _dues, teams: new address[](0)}));
-        teamExists[_teamName] = true;
+        seasons.push(SeasonData({dues: _dues, teams: new address[](0)}));
+        teamNameExists[_teamName] = true;
+        teamWalletExists[_commissioner] = true;
         teamName[_commissioner] = _teamName;
         seasons[0].teams.push(_commissioner);
-        allTeams.push(TeamData({name: _teamName, wallet: _commissioner}));
+        allTeams.push(_commissioner);
+    }
+
+    function leagueBalance() public view returns (uint256) {
+        return IERC20(USDC).balanceOf(address(this));
     }
 
     function currentSeason() public view returns (SeasonData memory) {
         return seasons[seasons.length - 1];
     }
 
-    function activeTeams() public view returns (TeamData[] memory) {
+    function getActiveTeams() public view returns (TeamData[] memory) {
         address[] memory teams = currentSeason().teams;
         TeamData[] memory _activeTeams = new TeamData[](teams.length);
         for (uint256 i = 0; i < teams.length; i++) {
@@ -66,6 +66,15 @@ contract League_TESTNET is AccessControl {
             _activeTeams[i] = TeamData({name: teamName[team], wallet: team});
         }
         return _activeTeams;
+    }
+
+    function getAllTeams() public view returns (TeamData[] memory) {
+        TeamData[] memory _allTeams = new TeamData[](allTeams.length);
+        for (uint256 i = 0; i < allTeams.length; i++) {
+            address team = allTeams[i];
+            _allTeams[i] = TeamData({name: teamName[team], wallet: team});
+        }
+        return _allTeams;
     }
 
     function setCommissioner(address _commissioner) external onlyRole(COMMISSIONER_ROLE) {
@@ -81,18 +90,47 @@ contract League_TESTNET is AccessControl {
         _revokeRole(TREASURER_ROLE, _treasurer);
     }
 
-    function createSeason(string memory _name, uint256 _dues) public onlyRole(COMMISSIONER_ROLE) {
-        require(!seasonExists[_name], "SEASON_EXISTS");
-        seasonExists[_name] = true;
-        seasons.push(SeasonData({name: _name, dues: _dues, teams: new address[](0)}));
+    function createSeason(uint256 _dues) public onlyRole(COMMISSIONER_ROLE) {
+        seasons.push(SeasonData({dues: _dues, teams: new address[](0)}));
     }
 
     function joinSeason(string memory _teamName) public {
-        require(!teamExists[_teamName], "TEAM_EXISTS");
-        teamExists[_teamName] = true;
+        require(!teamNameExists[_teamName], "TEAM_NAME_EXISTS");
+        require(!teamWalletExists[msg.sender], "TEAM_WALLET_EXISTS");
+        teamNameExists[_teamName] = true;
+        teamWalletExists[msg.sender] = true;
         teamName[msg.sender] = _teamName;
         IERC20(USDC).transferFrom(msg.sender, address(this), currentSeason().dues);
         seasons[seasons.length - 1].teams.push(msg.sender);
-        allTeams.push(TeamData({name: _teamName, wallet: msg.sender}));
+        allTeams.push(msg.sender);
+    }
+
+    function isTeamActive(address _team) public view returns (bool) {
+        address[] memory teams = currentSeason().teams;
+        for (uint256 i = 0; i < teams.length; i++) {
+            if (teams[i] == _team) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function removeTeam(address _team) external onlyRole(COMMISSIONER_ROLE) {
+        require(isTeamActive(_team), "TEAM_NOT_IN_SEASON");
+        address[] storage seasonTeams = seasons[seasons.length - 1].teams;
+        for (uint256 i = 0; i < seasonTeams.length; i++) {
+            if (seasonTeams[i] == _team) {
+                seasonTeams[i] = seasonTeams[seasonTeams.length - 1];
+                seasonTeams.pop();
+                IERC20(USDC).transfer(_team, currentSeason().dues);
+                break;
+            }
+        }
+    }
+
+    function closeLeague() external onlyRole(COMMISSIONER_ROLE) {
+        createSeason(0);
+        IERC20(USDC).transfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
+        ILeagueFactory(FACTORY).removeLeague();
     }
 }
