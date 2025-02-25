@@ -206,6 +206,9 @@ contract League_TESTNET is AccessControl {
     }
 
     function closeLeague() external onlyRole(COMMISSIONER_ROLE) {
+        for (uint256 i = 0; i < activeVaults.length; i++) {
+            withdrawFromVault(activeVaults[i], IERC20(activeVaults[i]).balanceOf(address(this)));
+        }
         IERC20(USDC).safeTransfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
         ILeagueFactory(FACTORY).removeLeague();
         emit LeagueClosed(msg.sender, IERC20(USDC).balanceOf(address(this)));
@@ -248,7 +251,7 @@ contract League_TESTNET is AccessControl {
         emit DepositedToVault(_vault, _amount);
     }
 
-    function withdrawFromVault(address _vault, uint256 _shares) external onlyRole(TREASURER_ROLE) {
+    function withdrawFromVault(address _vault, uint256 _shares) public onlyRole(TREASURER_ROLE) {
         require(_shares <= IERC20(_vault).balanceOf(address(this)), "INSUFFICIENT_VAULT_BALANCE");
         uint256 result = IERC4626(_vault).redeem(_shares, address(this), address(this));
         if (IERC20(_vault).balanceOf(address(this)) == 0) {
