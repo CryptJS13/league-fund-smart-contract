@@ -30,6 +30,12 @@ contract LeagueFactory_TESTNET is Ownable {
 
     uint256 public seasonCreationFee = 0;
 
+    struct TeamLeaugeInfo {
+        address league;
+        bool joined;
+        bool currentlyActive;
+    }
+
     constructor() Ownable(msg.sender) {}
 
     function allLeaguesLength() external view returns (uint256) {
@@ -64,27 +70,17 @@ contract LeagueFactory_TESTNET is Ownable {
         }
     }
 
-    function getActiveLeagues(address _team) external view returns (address[] memory) {
-        uint256 count = 0;
-        // First loop: count how many leagues are active
-        for (uint256 i = 0; i < allLeagues.length; i++) {
-            if (ILeague(allLeagues[i]).isTeamActive(_team)) {
-                count++;
-            }
-        }
+    function getTeamLeagues(address _team) external view returns (TeamLeaugeInfo[] memory) {
+        TeamLeaugeInfo[] memory teamLeagues = new TeamLeaugeInfo[](allLeagues.length);
 
-        // Allocate a memory array of the correct size
-        address[] memory activeLeagues = new address[](count);
-
-        // Second loop: populate the array
-        uint256 index = 0;
         for (uint256 i = 0; i < allLeagues.length; i++) {
-            if (ILeague(allLeagues[i]).isTeamActive(_team)) {
-                activeLeagues[index] = allLeagues[i];
-                index++;
-            }
+            teamLeagues[i] = TeamLeaugeInfo({
+                league: allLeagues[i],
+                joined: ILeague(allLeagues[i]).teamWalletExists(_team),
+                currentlyActive: ILeague(allLeagues[i]).isTeamActive(_team)
+            });
         }
-        return activeLeagues;
+        return teamLeagues;
     }
 
     function setLeagueRewardNFT(address _leagueRewardNFT) external onlyOwner {
