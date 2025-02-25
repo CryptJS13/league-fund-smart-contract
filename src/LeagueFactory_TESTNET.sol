@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./League_TESTNET.sol";
 import "./interfaces/ILeague.sol";
 import "./interfaces/ILeagueRewardNFT.sol";
+import "./interfaces/IVault.sol";
 
 contract LeagueFactory_TESTNET is Ownable {
     bool public constant isFactory = true;
@@ -15,12 +16,17 @@ contract LeagueFactory_TESTNET is Ownable {
     event LeagueRemoved(string name, address league);
     event SetLeagueRewardNFT(address leagueRewardNFT);
     event SetSeasonCreationFee(uint256 fee);
+    event VaultAdded(address vault);
+    event VaultRemoved(address vault);
 
     address public leagueRewardNFT;
     mapping(string => address) public leagueAddress;
     mapping(address => string) public leagueName;
     mapping(address => bool) public isLeague;
     address[] public allLeagues;
+
+    mapping(address => bool) public isVault;
+    address[] public allVaults;
 
     uint256 public seasonCreationFee = 0;
 
@@ -90,5 +96,26 @@ contract LeagueFactory_TESTNET is Ownable {
     function setSeasonCreationFee(uint256 _fee) external onlyOwner {
         seasonCreationFee = _fee;
         emit SetSeasonCreationFee(_fee);
+    }
+
+    function addVault(address _vault) external onlyOwner {
+        require(IVault(_vault).FACTORY() == address(this), "INVALID_FACTORY");
+        require(!isVault[_vault], "VAULT_EXISTS");
+        isVault[_vault] = true;
+        allVaults.push(_vault);
+        emit VaultAdded(_vault);
+    }
+
+    function removeVault(address _vault) external onlyOwner {
+        require(isVault[_vault], "VAULT_DOES_NOT_EXIST");
+        isVault[_vault] = false;
+        for (uint256 i = 0; i < allVaults.length; i++) {
+            if (allVaults[i] == _vault) {
+                allVaults[i] = allVaults[allVaults.length - 1];
+                allVaults.pop();
+                break;
+            }
+        }
+        emit VaultRemoved(_vault);
     }
 }

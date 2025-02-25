@@ -3,10 +3,14 @@ pragma solidity 0.8.28;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import "./interfaces/ILeagueFactory.sol";
 import "./interfaces/ILeagueRewardNFT.sol";
 
 contract League_TESTNET is AccessControl {
+    using SafeERC20 for IERC20;
+
     bytes32 public constant COMMISSIONER_ROLE = keccak256("COMMISSIONER_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
     address public constant USDC = address(0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B); // Testnet address
@@ -38,6 +42,8 @@ contract League_TESTNET is AccessControl {
     event RewardsClaimed(address indexed team, uint256 totalReward, uint256 rewardCount, string imageURL);
     event LeagueClosed(address indexed commissioner, uint256 finalBalance);
     event FeePaid(address indexed league, address indexed receiver, uint256 amount);
+    event DepositedToVault(address indexed vault, uint256 amount);
+    event WithdrawnFromVault(address indexed vault, uint256 result);
 
     string public name;
     SeasonData[] public seasons;
@@ -48,6 +54,9 @@ contract League_TESTNET is AccessControl {
     mapping(string => bool) public teamNameExists;
     mapping(address => bool) public teamWalletExists;
     mapping(address => string) public teamName;
+
+    address[] public activeVaults;
+    mapping(address => bool) public vaultActive;
 
     modifier onlyActive() {
         require(isActive(), "LEAGUE_NOT_ACTIVE");
@@ -84,8 +93,20 @@ contract League_TESTNET is AccessControl {
         emit LeagueInitialized(name, _commissioner, _dues);
     }
 
-    function leagueBalance() public view returns (uint256) {
+    function totalLeagueBalance() public view returns (uint256) {
+        return cashBalance() + totalVaultBalance();
+    }
+
+    function cashBalance() public view returns (uint256) {
         return IERC20(USDC).balanceOf(address(this));
+    }
+
+    function totalVaultBalance() public view returns (uint256) {
+        uint256 total;
+        for (uint256 i = 0; i < activeVaults.length; i++) {
+            total += _balanceInVault(activeVaults[i]);
+        }
+        return total;
     }
 
     function currentSeason() public view returns (SeasonData memory) {
@@ -133,7 +154,7 @@ contract League_TESTNET is AccessControl {
         seasons.push(SeasonData({dues: _dues, teams: new address[](0)}));
         joinSeason(teamName[msg.sender]);
         if (fee > 0) {
-            IERC20(USDC).transfer(ILeagueFactory(FACTORY).owner(), fee);
+            IERC20(USDC).safeTransfer(ILeagueFactory(FACTORY).owner(), fee);
             emit FeePaid(address(this), ILeagueFactory(FACTORY).owner(), fee);
         }
         emit SeasonCreated(seasons.length - 1, _dues);
@@ -155,7 +176,7 @@ contract League_TESTNET is AccessControl {
             teamName[msg.sender] = _teamName;
             allTeams.push(msg.sender);
         }
-        IERC20(USDC).transferFrom(msg.sender, address(this), currentSeason().dues);
+        IERC20(USDC).safeTransferFrom(msg.sender, address(this), currentSeason().dues);
         seasons[seasons.length - 1].teams.push(msg.sender);
         emit JoinedSeason(msg.sender, _teamName, seasons.length - 1);
     }
@@ -177,7 +198,7 @@ contract League_TESTNET is AccessControl {
             if (seasonTeams[i] == _team) {
                 seasonTeams[i] = seasonTeams[seasonTeams.length - 1];
                 seasonTeams.pop();
-                IERC20(USDC).transfer(_team, currentSeason().dues);
+                IERC20(USDC).safeTransfer(_team, currentSeason().dues);
                 break;
             }
         }
@@ -185,7 +206,7 @@ contract League_TESTNET is AccessControl {
     }
 
     function closeLeague() external onlyRole(COMMISSIONER_ROLE) {
-        IERC20(USDC).transfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
+        IERC20(USDC).safeTransfer(msg.sender, IERC20(USDC).balanceOf(address(this)));
         ILeagueFactory(FACTORY).removeLeague();
         emit LeagueClosed(msg.sender, IERC20(USDC).balanceOf(address(this)));
     }
@@ -193,7 +214,7 @@ contract League_TESTNET is AccessControl {
     function allocateReward(address _team, string memory _name, uint256 _amount) external onlyRole(COMMISSIONER_ROLE) {
         require(isTeamActive(_team), "TEAM_NOT_IN_SEASON");
         totalClaimableRewards += _amount;
-        require(totalClaimableRewards <= leagueBalance(), "INSUFFICIENT_BALANCE");
+        require(totalClaimableRewards <= cashBalance(), "INSUFFICIENT_CASH_BALANCE");
         teamRewards[_team].push(RewardData({name: _name, amount: _amount}));
         emit RewardAllocated(_team, _name, _amount);
     }
@@ -211,7 +232,39 @@ contract League_TESTNET is AccessControl {
         delete teamRewards[msg.sender];
         if (totalRewards > 0) {
             totalClaimableRewards -= totalRewards;
-            IERC20(USDC).transfer(msg.sender, totalRewards);
+            IERC20(USDC).safeTransfer(msg.sender, totalRewards);
         }
+    }
+
+    function depositToVault(address _vault, uint256 _amount) external onlyRole(TREASURER_ROLE) {
+        require(ILeagueFactory(FACTORY).isVault(_vault), "NOT_VAULT");
+        require(_amount <= cashBalance(), "INSUFFICIENT_CASH_BALANCE");
+        IERC20(USDC).forceApprove(_vault, _amount);
+        IERC4626(_vault).deposit(_amount, address(this));
+        if (!vaultActive[_vault]) {
+            activeVaults.push(_vault);
+            vaultActive[_vault] = true;
+        }
+        emit DepositedToVault(_vault, _amount);
+    }
+
+    function withdrawFromVault(address _vault, uint256 _shares) external onlyRole(TREASURER_ROLE) {
+        require(_shares <= IERC20(_vault).balanceOf(address(this)), "INSUFFICIENT_VAULT_BALANCE");
+        uint256 result = IERC4626(_vault).redeem(_shares, address(this), address(this));
+        if (IERC20(_vault).balanceOf(address(this)) == 0) {
+            vaultActive[_vault] = false;
+            for (uint256 i = 0; i < activeVaults.length; i++) {
+                if (activeVaults[i] == _vault) {
+                    activeVaults[i] = activeVaults[activeVaults.length - 1];
+                    activeVaults.pop();
+                    break;
+                }
+            }
+        }
+        emit WithdrawnFromVault(_vault, result);
+    }
+
+    function _balanceInVault(address _vault) internal view returns (uint256) {
+        return IERC4626(_vault).convertToAssets(IERC20(_vault).balanceOf(address(this)));
     }
 }

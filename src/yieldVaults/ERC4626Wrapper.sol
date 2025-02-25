@@ -59,7 +59,7 @@ contract ERC4626Wrapper is ERC20, IERC4626, ReentrancyGuard {
         _mint(_receiver, shares);
 
         // update the contribution amount for the beneficiary
-        emit IERC4626.Deposit(_sender, _receiver, _assets, shares);
+        emit Deposit(_sender, _receiver, _assets, shares);
         return shares;
     }
 

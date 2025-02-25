@@ -406,7 +406,7 @@ contract League_TESTNET_Test is Test {
         vm.stopPrank();
 
         // Check the league's current balance
-        uint256 leagueBal = league.leagueBalance();
+        uint256 leagueBal = league.totalLeagueBalance();
         assertEq(leagueBal, INITIAL_DUES * 2, "League balance mismatch after user1 joined");
 
         // Non-commissioner tries to allocate reward -> revert
@@ -426,7 +426,7 @@ contract League_TESTNET_Test is Test {
 
         // Now if we try to allocate more than leagueBal, it should revert
         vm.startPrank(commissioner);
-        vm.expectRevert(bytes("INSUFFICIENT_BALANCE"));
+        vm.expectRevert(bytes("INSUFFICIENT_CASH_BALANCE"));
         league.allocateReward(user1, "reward", leagueBal + 1);
         vm.stopPrank();
     }
