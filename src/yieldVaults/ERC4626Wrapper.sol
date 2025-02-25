@@ -64,7 +64,7 @@ contract ERC4626Wrapper is ERC20, IERC4626, ReentrancyGuard {
     }
 
     function maxDeposit(address receiver) public view returns (uint256) {
-        return ILeagueFactory(FACTORY).isLeague(msg.sender) ? underlyingVault.maxDeposit(receiver) : 0;
+        return ILeagueFactory(FACTORY).isLeague(receiver) ? underlyingVault.maxDeposit(address(this)) : 0;
     }
 
     function previewDeposit(uint256 _assets) public view returns (uint256) {
@@ -122,7 +122,9 @@ contract ERC4626Wrapper is ERC20, IERC4626, ReentrancyGuard {
     }
 
     function maxRedeem(address owner) public view returns (uint256) {
-        return underlyingVault.maxRedeem(owner);
+        uint256 ownerBalance = balanceOf(owner);
+        uint256 _maxRedeem = underlyingVault.maxRedeem(address(this));
+        return ownerBalance < _maxRedeem ? ownerBalance : _maxRedeem;
     }
 
     function previewRedeem(uint256 _shares) public view returns (uint256) {

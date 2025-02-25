@@ -39,7 +39,7 @@ contract League_TESTNET is AccessControl {
     event TreasurerAdded(address indexed newTreasurer);
     event TreasurerRemoved(address indexed oldTreasurer);
     event RewardAllocated(address indexed team, string rewardName, uint256 amount);
-    event RewardsClaimed(address indexed team, uint256 totalReward, uint256 rewardCount, string imageURL);
+    event RewardsClaimed(address indexed team, uint256 totalReward, uint256 rewardCount);
     event LeagueClosed(address indexed commissioner, uint256 finalBalance);
     event FeePaid(address indexed league, address indexed receiver, uint256 amount);
     event DepositedToVault(address indexed vault, uint256 amount);
@@ -104,7 +104,7 @@ contract League_TESTNET is AccessControl {
     function totalVaultBalance() public view returns (uint256) {
         uint256 total;
         for (uint256 i = 0; i < activeVaults.length; i++) {
-            total += _balanceInVault(activeVaults[i]);
+            total += balanceInVault(activeVaults[i]);
         }
         return total;
     }
@@ -219,16 +219,16 @@ contract League_TESTNET is AccessControl {
         emit RewardAllocated(_team, _name, _amount);
     }
 
-    function claimReward(string memory imageURL) external {
+    function claimReward(string[] memory imageURLs) external {
         uint256 totalRewards = 0;
         RewardData[] storage rewards = teamRewards[msg.sender];
         for (uint256 i = 0; i < rewards.length; i++) {
             ILeagueRewardNFT(ILeagueFactory(FACTORY).leagueRewardNFT()).mintReward(
-                msg.sender, name, teamName[msg.sender], rewards[i].name, rewards[i].amount, imageURL
+                msg.sender, name, teamName[msg.sender], rewards[i].name, rewards[i].amount, imageURLs[i]
             );
             totalRewards += rewards[i].amount;
         }
-        emit RewardsClaimed(msg.sender, totalRewards, rewards.length, imageURL);
+        emit RewardsClaimed(msg.sender, totalRewards, rewards.length);
         delete teamRewards[msg.sender];
         if (totalRewards > 0) {
             totalClaimableRewards -= totalRewards;
@@ -238,7 +238,7 @@ contract League_TESTNET is AccessControl {
 
     function depositToVault(address _vault, uint256 _amount) external onlyRole(TREASURER_ROLE) {
         require(ILeagueFactory(FACTORY).isVault(_vault), "NOT_VAULT");
-        require(_amount <= cashBalance(), "INSUFFICIENT_CASH_BALANCE");
+        require(_amount <= (cashBalance() - totalClaimableRewards), "INSUFFICIENT_CASH_BALANCE");
         IERC20(USDC).forceApprove(_vault, _amount);
         IERC4626(_vault).deposit(_amount, address(this));
         if (!vaultActive[_vault]) {
@@ -264,7 +264,7 @@ contract League_TESTNET is AccessControl {
         emit WithdrawnFromVault(_vault, result);
     }
 
-    function _balanceInVault(address _vault) internal view returns (uint256) {
+    function balanceInVault(address _vault) public view returns (uint256) {
         return IERC4626(_vault).convertToAssets(IERC20(_vault).balanceOf(address(this)));
     }
 }
