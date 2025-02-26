@@ -31,7 +31,8 @@ contract LeagueFactory_TESTNET is Ownable {
     uint256 public seasonCreationFee = 0;
 
     struct TeamLeaugeInfo {
-        address league;
+        string leagueName;
+        address leagueAddress;
         bool joined;
         bool currentlyActive;
     }
@@ -75,7 +76,8 @@ contract LeagueFactory_TESTNET is Ownable {
 
         for (uint256 i = 0; i < allLeagues.length; i++) {
             teamLeagues[i] = TeamLeaugeInfo({
-                league: allLeagues[i],
+                leagueName: leagueName[allLeagues[i]],
+                leagueAddress: allLeagues[i],
                 joined: ILeague(allLeagues[i]).teamWalletExists(_team),
                 currentlyActive: ILeague(allLeagues[i]).isTeamActive(_team)
             });
