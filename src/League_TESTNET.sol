@@ -39,7 +39,7 @@ contract League_TESTNET is AccessControl {
     event TreasurerAdded(address indexed newTreasurer);
     event TreasurerRemoved(address indexed oldTreasurer);
     event RewardAllocated(address indexed team, string rewardName, uint256 amount);
-    event RewardsClaimed(address indexed team, uint256 totalReward, uint256 rewardCount);
+    event RewardClaimed(address indexed team, uint256 totalReward, string rewardName);
     event LeagueClosed(address indexed commissioner, uint256 finalBalance);
     event FeePaid(address indexed league, address indexed receiver, uint256 amount);
     event DepositedToVault(address indexed vault, uint256 amount);
@@ -222,20 +222,19 @@ contract League_TESTNET is AccessControl {
         emit RewardAllocated(_team, _name, _amount);
     }
 
-    function claimReward(string[] memory imageURLs) external {
-        uint256 totalRewards = 0;
+    function claimReward(string memory imageURLs) external {
         RewardData[] storage rewards = teamRewards[msg.sender];
-        for (uint256 i = 0; i < rewards.length; i++) {
-            ILeagueRewardNFT(ILeagueFactory(FACTORY).leagueRewardNFT()).mintReward(
-                msg.sender, name, teamName[msg.sender], rewards[i].name, rewards[i].amount, imageURLs[i]
-            );
-            totalRewards += rewards[i].amount;
-        }
-        emit RewardsClaimed(msg.sender, totalRewards, rewards.length);
-        delete teamRewards[msg.sender];
-        if (totalRewards > 0) {
-            totalClaimableRewards -= totalRewards;
-            IERC20(USDC).safeTransfer(msg.sender, totalRewards);
+        require(rewards.length > 0, "NO_REWARDS");
+        string memory rewardName = rewards[rewards.length - 1].name;
+        uint256 amount = rewards[rewards.length - 1].amount;
+        ILeagueRewardNFT(ILeagueFactory(FACTORY).leagueRewardNFT()).mintReward(
+            msg.sender, name, teamName[msg.sender], rewardName, amount, imageURLs
+        );
+        emit RewardClaimed(msg.sender, amount, rewardName);
+        teamRewards[msg.sender].pop();
+        if (amount > 0) {
+            totalClaimableRewards -= amount;
+            IERC20(USDC).safeTransfer(msg.sender, amount);
         }
     }
 
