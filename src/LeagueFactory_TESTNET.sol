@@ -35,6 +35,8 @@ contract LeagueFactory_TESTNET is Ownable {
         address leagueAddress;
         bool joined;
         bool currentlyActive;
+        bool commissioner;
+        bool treasurer;
     }
 
     constructor() Ownable(msg.sender) {}
@@ -79,7 +81,9 @@ contract LeagueFactory_TESTNET is Ownable {
                 leagueName: leagueName[allLeagues[i]],
                 leagueAddress: allLeagues[i],
                 joined: ILeague(allLeagues[i]).teamWalletExists(_team),
-                currentlyActive: ILeague(allLeagues[i]).isTeamActive(_team)
+                currentlyActive: ILeague(allLeagues[i]).isTeamActive(_team),
+                commissioner: ILeague(allLeagues[i]).hasRole(keccak256("COMMISSIONER_ROLE"), _team),
+                treasurer: ILeague(allLeagues[i]).hasRole(keccak256("TREASURER_ROLE"), _team)
             });
         }
         return teamLeagues;
