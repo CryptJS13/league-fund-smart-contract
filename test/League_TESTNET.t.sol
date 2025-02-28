@@ -426,15 +426,14 @@ contract LeagueTest is Test {
 
         // user1 claims reward. This also calls mintReward on the NFT,
         // then transfers 200 USDC from league to user1
-        string[] memory imageURLs = new string[](1);
-        imageURLs[0] = "ipfs://someImageHash";
+        string memory imageURL = "ipfs://someImageHash";
 
         // user1's USDC before claim = 4k left in their wallet (they spent 1k to join)
         // Actually 5k - 1k = 4k
         uint256 beforeBalance = IERC20(USDC).balanceOf(user1);
 
         vm.startPrank(user1);
-        league.claimReward(imageURLs);
+        league.claimReward(imageURL);
         vm.stopPrank();
 
         // user1's USDC after claim should be beforeBalance + 200

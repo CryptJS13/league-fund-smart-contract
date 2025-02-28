@@ -57,4 +57,7 @@ interface ILeague is IAccessControl {
     function isTeamActive(address _team) external view returns (bool);
     function removeTeam(address _team) external;
     function closeLeague() external;
+
+    function allocateReward(address _team, string calldata _rewardName, uint256 _rewardAmount) external;
+    function claimReward(string calldata _imageURL) external;
 }

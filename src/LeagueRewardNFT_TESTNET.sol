@@ -38,6 +38,9 @@ contract LeagueRewardNFT_TESTNET is ERC721 {
     // TokenID -> RewardInfo
     mapping(uint256 => RewardInfo) private _rewards;
 
+    mapping(address => RewardInfo[]) public leagueRewards;
+    mapping(address => RewardInfo[]) public teamRewards;
+
     // Auto-incremented token ID
     uint256 private _currentTokenId;
 
@@ -68,14 +71,17 @@ contract LeagueRewardNFT_TESTNET is ERC721 {
     ) external onlyLeague returns (uint256) {
         _currentTokenId++;
         uint256 newTokenId = _currentTokenId;
-
-        _rewards[newTokenId] = RewardInfo({
+        RewardInfo memory newReward = RewardInfo({
             leagueName: _leagueName,
             teamName: _teamName,
             rewardName: _rewardName,
             usdcAmount: _usdcAmount,
             imageData: _imageData
         });
+
+        _rewards[newTokenId] = newReward;
+        leagueRewards[ILeagueFactory(FACTORY).leagueAddress(_leagueName)].push(newReward);
+        teamRewards[_to].push(newReward);
 
         _safeMint(_to, newTokenId);
 
@@ -129,5 +135,13 @@ contract LeagueRewardNFT_TESTNET is ERC721 {
     function _encodeJson(bytes memory json) private pure returns (string memory) {
         string memory encodedJson = Base64.encode(json);
         return string(abi.encodePacked("data:application/json;base64,", encodedJson));
+    }
+
+    function getLeagueRewards(address _league) external view returns (RewardInfo[] memory) {
+        return leagueRewards[_league];
+    }
+
+    function getTeamRewards(address _team) external view returns (RewardInfo[] memory) {
+        return teamRewards[_team];
     }
 }

@@ -211,8 +211,8 @@ contract LeagueFactoryTest is Test {
         // We expect 2 entries (LeagueA & LeagueB).
         assertEq(infoUser1.length, 2, "Should have 2 leagues total for user1");
         // The order will be the same as factory.allLeagues (which is [leagueA, leagueB]).
-        assertEq(address(infoUser1[0].league), leagueA, "First league check");
-        assertEq(address(infoUser1[1].league), leagueB, "Second league check");
+        assertEq(address(infoUser1[0].leagueAddress), leagueA, "First league check");
+        assertEq(address(infoUser1[1].leagueAddress), leagueB, "Second league check");
 
         // For user2, they haven't created or joined from the factory perspective unless
         // ILeague(...).teamWalletExists(user2) is true. If your `League_TESTNET` does that automatically,

@@ -16,12 +16,12 @@ import "../src/yieldVaults/MockERC4626.sol";
  */
 contract ERC4626WrapperTest is Test {
     // Constants for the fork environment
-    address public constant USDC = 0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B; 
+    address public constant USDC = 0xa2fc8C407E0Ab497ddA623f5E16E320C7c90C83B;
     address public constant whale = 0xE262C1e7c5177E28E51A5cf1C6944470697B2c9F;
 
     // Test accounts
-    address public owner = address(100);          // Owner of the factory
-    address public commissioner = address(101);   // Will deploy the league
+    address public owner = address(100); // Owner of the factory
+    address public commissioner = address(101); // Will deploy the league
     address public user1 = address(102);
 
     LeagueFactory_TESTNET public factory;

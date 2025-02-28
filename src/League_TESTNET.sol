@@ -65,8 +65,8 @@ contract League_TESTNET is AccessControl {
 
     constructor(string memory _leagueName, uint256 _dues, string memory _teamName, address _commissioner) {
         require(_commissioner != address(0), "INVALID_COMMISSIONER");
-        require(!_compareStrings(_leagueName, ''), "INVALID_LEAGUE_NAME");
-        require(!_compareStrings(_teamName, ''), "INVALID_TEAM_NAME");
+        require(!_compareStrings(_leagueName, ""), "INVALID_LEAGUE_NAME");
+        require(!_compareStrings(_teamName, ""), "INVALID_TEAM_NAME");
         require(ILeagueFactory(msg.sender).isFactory(), "NOT_FACTORY");
         FACTORY = msg.sender;
         _setRoleAdmin(TREASURER_ROLE, COMMISSIONER_ROLE);
@@ -168,7 +168,7 @@ contract League_TESTNET is AccessControl {
     }
 
     function joinSeason(string memory _teamName) public onlyActive {
-        require(!_compareStrings(_teamName, ''), "INVALID_TEAM_NAME");
+        require(!_compareStrings(_teamName, ""), "INVALID_TEAM_NAME");
         require(!isTeamActive(msg.sender), "TEAM_ALREADY_JOINED");
         if (teamNameExists[_teamName]) {
             require(_compareStrings(teamName[msg.sender], _teamName), "TEAM_NAME_MISMATCH");
@@ -272,5 +272,9 @@ contract League_TESTNET is AccessControl {
 
     function balanceInVault(address _vault) public view returns (uint256) {
         return IERC4626(_vault).convertToAssets(IERC20(_vault).balanceOf(address(this)));
+    }
+
+    function getTeamRewards(address _team) public view returns (RewardData[] memory) {
+        return teamRewards[_team];
     }
 }

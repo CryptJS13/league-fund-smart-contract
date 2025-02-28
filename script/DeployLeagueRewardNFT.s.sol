@@ -3,6 +3,8 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Script.sol";
 import "../src/LeagueRewardNFT_TESTNET.sol";
+import "../src/interfaces/ILeagueFactory.sol";
+import "../addresses.sol";
 
 /**
  * @title DeployLeagueFactory
@@ -25,10 +27,12 @@ contract DeployLeagueRewardNFT is Script {
 
         // 3. Deploy the contract.
         LeagueRewardNFT_TESTNET rewardNFT =
-            new LeagueRewardNFT_TESTNET("League Fund Reward", "LFR", address(0xCD1B54C3F9Eb48Bbe730f3005ac05eF4DBD845c6));
+            new LeagueRewardNFT_TESTNET("League Fund Reward", "LFR", ADDRESSES.LEAGUE_FACTORY);
 
         // 4. Log the factory’s deployed address for easy reference.
         console.log("LeagueRewardNFT_TESTNET deployed at:", address(rewardNFT));
+
+        ILeagueFactory(ADDRESSES.LEAGUE_FACTORY).setLeagueRewardNFT(address(rewardNFT));
 
         // 5. Stop broadcasting.
         vm.stopBroadcast();
