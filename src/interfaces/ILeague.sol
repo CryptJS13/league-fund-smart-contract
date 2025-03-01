@@ -54,6 +54,7 @@ interface ILeague is IAccessControl {
     function removeTreasurer(address _treasurer) external;
     function createSeason(uint256 _dues) external;
     function joinSeason(string calldata _teamName) external;
+    function joinSeasonFor(address _wallet, string calldata _teamName) external;
     function isTeamActive(address _team) external view returns (bool);
     function removeTeam(address _team) external;
     function closeLeague() external;

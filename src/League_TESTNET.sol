@@ -185,6 +185,24 @@ contract League_TESTNET is AccessControl {
         emit JoinedSeason(msg.sender, _teamName, seasons.length - 1);
     }
 
+    function joinSeasonFor(address _wallet, string memory _teamName) external onlyRole(COMMISSIONER_ROLE) {
+        require(!_compareStrings(_teamName, ""), "INVALID_TEAM_NAME");
+        require(!isTeamActive(_wallet), "TEAM_ALREADY_JOINED");
+        if (teamNameExists[_teamName]) {
+            require(_compareStrings(teamName[_wallet], _teamName), "TEAM_NAME_MISMATCH");
+        } else if (teamWalletExists[_wallet]) {
+            require(_compareStrings(teamName[_wallet], _teamName), "TEAM_NAME_MISMATCH");
+        } else {
+            teamNameExists[_teamName] = true;
+            teamWalletExists[_wallet] = true;
+            teamName[_wallet] = _teamName;
+            allTeams.push(_wallet);
+        }
+        IERC20(USDC).safeTransferFrom(msg.sender, address(this), currentSeason().dues);
+        seasons[seasons.length - 1].teams.push(_wallet);
+        emit JoinedSeason(_wallet, _teamName, seasons.length - 1);
+    }
+
     function isTeamActive(address _team) public view returns (bool) {
         address[] memory teams = currentSeason().teams;
         for (uint256 i = 0; i < teams.length; i++) {
